@@ -9,7 +9,9 @@ import { OwnershipFacet } from "src/facets/OwnershipFacet.sol";
 import { DiamondCutFacet } from "src/facets/DiamondCutFacet.sol";
 import { DiamondLoupeFacet } from "src/facets/DiamondLoupeFacet.sol";
 import { IERC173 } from "src/interfaces/IERC173.sol";
+import { IERC165 } from "src/interfaces/IERC165.sol";
 import { Test1Facet } from "src/test/Test1Facet.sol";
+import { DiamondInit } from "src/upgradeInitializers/DiamondInit.sol";
 
 contract DiamondTestBase is Test {
     Diamond internal diamond;
@@ -31,11 +33,12 @@ contract DiamondTestBase is Test {
         bytes4[] memory diamondCutFacetSelectors = new bytes4[](1);
         diamondCutFacetSelectors[0] = IDiamondCut(address(0)).diamondCut.selector;
 
-        bytes4[] memory diamondLoupeFacetSelectors = new bytes4[](4);
+        bytes4[] memory diamondLoupeFacetSelectors = new bytes4[](5);
         diamondLoupeFacetSelectors[0] = IDiamondLoupe.facets.selector;
         diamondLoupeFacetSelectors[1] = IDiamondLoupe.facetFunctionSelectors.selector;
         diamondLoupeFacetSelectors[2] = IDiamondLoupe.facetAddresses.selector;
         diamondLoupeFacetSelectors[3] = IDiamondLoupe.facetAddress.selector;
+        diamondLoupeFacetSelectors[4] = IERC165.supportsInterface.selector;
 
         bytes4[] memory ownershipFacetSelectors = new bytes4[](2);
         ownershipFacetSelectors[0] = IERC173.transferOwnership.selector;
@@ -58,10 +61,12 @@ contract DiamondTestBase is Test {
             functionSelectors: ownershipFacetSelectors
         });
 
+        DiamondInit diamondInit = new DiamondInit();
+
         DiamondArgs memory _args = DiamondArgs({
             owner: address(this),
-            init: address(0),
-            initCalldata: ""
+            init: address(diamondInit),
+            initCalldata: abi.encodeCall(DiamondInit.init, ())
         });
 
         diamond_ = new Diamond(_diamondCut, _args);
@@ -95,7 +100,6 @@ contract AddTest1FacetSetup is DiamondTestBase {
         });
 
         iDiamondCutFacet.diamondCut(_diamondCut, address(0), "");
-
         iTest1Facet = Test1Facet(address(diamond));
     }
 }
@@ -112,7 +116,7 @@ contract DiamondTest is DiamondTestBase {
         assertEq(selectors.length, 1);
 
         selectors = iDiamondLoupeFacet.facetFunctionSelectors(address(diamondLoupeFacet));
-        assertEq(selectors.length, 4);
+        assertEq(selectors.length, 5);
 
         selectors = iDiamondLoupeFacet.facetFunctionSelectors(address(ownershipFacet));
         assertEq(selectors.length, 2);
@@ -126,6 +130,16 @@ contract DiamondTest is DiamondTestBase {
     function test_Owner() public {
         address owner = iOwnershipFacet.owner();
         assertEq(owner, address(this));
+    }
+
+    function test_TransferOwnership() public {
+        address newOwner = address(1);
+        iOwnershipFacet.transferOwnership(newOwner);
+        assertEq(iOwnershipFacet.owner(), newOwner);
+    }
+
+    function test_IERC165() public {
+        assertTrue(IERC165(address(diamond)).supportsInterface(type(IERC173).interfaceId));
     }
 }
 
